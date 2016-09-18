@@ -1,0 +1,242 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>实现RTCDataChannel通信</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1,maximum-scale=1" />
+    <script src="https://cdn.socket.io/socket.io-1.2.0.js"></script>
+</head>
+<body>
+<article>
+    <h1>实现RTCDataChannel通信</h1>
+    <table>
+        <tr>
+            <input type="button" value="开始连接" onclick="connect()" >
+        </tr>
+        <tr>
+            <td>
+                发送信息：
+                <input id="from-first-peer" type="text"  onchange="dataSend()">
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <ol id="messages-sent-by-second-peer" >
+                    收到的信息:
+                </ol>
+            </td>
+        </tr>
+    </table>
+</article>
+<script>
+    navigator.getUserMedia = navigator.getUserMedia ||
+            navigator.webkitGetUserMedia || window.navigator.mozGetUserMedia;
+    window.URL = window.URL || window.webkitURL;
+    if (navigator.mozGetUserMedia) {
+        RTCPeerConnection = mozRTCPeerConnection;
+        RTCSessionDescription = mozRTCSessionDescription;
+        RTCIceCandidate =mozRTCIceCandidate;
+    }
+    else if (navigator.webkitGetUserMedia) {
+        RTCPeerConnection = webkitRTCPeerConnection;
+    }
+    else {
+        alert("Your browser do not support WebRTC communication");
+    }
+    var dataChannel;
+    var peerConnection;
+    var currentoffer = null;
+    var sdp = "";
+    var firstPeerTextBox = document.getElementById('from-first-peer');
+    var firstPeerOutput = document.getElementById('messages-sent-by-second-peer');
+
+    var mediaConstraints = {
+        mandatory: {
+            OfferToReceiveAudio: false,
+            OfferToReceiveVideo: false
+        }
+    };
+
+    var port = 3000;
+    var socket = io.connect('http://10.42.0.220:' + port + '/');
+
+    var pc_config = {"iceServers": []};
+
+    socket.on('connect', onOpened)
+            .on('message', onMessage);
+
+    function onOpened(evt) {
+        console.log('已建立socket连接');
+    }
+
+    //socket消息处理
+    function onMessage(evt) {
+        if (evt.type === 'offer') {
+            receiveOffer(evt);
+        } else if (evt.type === 'answer') {
+            receiveAnswer(evt);
+        } else {
+            ReceiveIceCandidate(evt);
+        }
+    }
+
+    function connect() {
+        createPeerConnect();
+        createDatachannel();
+        sendOffer();
+    }
+
+    function createPeerConnect() {
+        try {
+            peerConnection = new RTCPeerConnection(pc_config);
+            console.log("Peerconnection Connection state: "+JSON.stringify(peerConnection));
+        }
+        catch (e) {
+            console.log("pc established error："+e.message);
+        }
+
+        peerConnection.onopen = function() {
+            console.log("PeerConnection established");
+        };
+
+        peerConnection.onicecandidate = function (event) {
+            if (event.candidate == null) {
+                if (sdp == "") {
+                    console.log("sdp error");
+                    return;
+                }
+                return;
+            } else {
+                socketSend(event.candidate);
+            }
+            console.log("iceGatheringState: "+ peerConnection.iceGatheringState);
+        };
+
+        peerConnection.oniceconnectionstatechange = function (evt) {
+            console.log("iceGatheringState: "+ peerConnection.iceConnectionState);
+            console.log("signalingstate:"+ peerConnection.signalingState);
+            console.log("pc Connection state: "+peerConnection.connectionState);
+            console.log(dataChannel.label+"dc state: "+ dataChannel.readyState);
+        };
+
+        peerConnection.ondatachanel = onNewDataChannel;
+    }
+
+    function createDatachannel() {
+        try {
+            dataChannel = peerConnection.createDataChannel('dataChannel', {reliable: true});
+            console.log("Channel [" + dataChannel.label + "] created!");
+            console.log(dataChannel.label+"Datachannel state: "+ dataChannel.readyState);
+        }
+        catch (dce) {
+            console.log("dc established error: "+dce.message);
+        }
+
+        dataChannelEvents(dataChannel);
+    }
+
+    //DCchannel处理
+    function dataChannelEvents(channel) {
+
+        channel.onopen = function () {
+            console.log("Datachannel opened, current stateis :\n" + dataChannel.readyState);
+            console.log(channel);
+        };
+
+        channel.onmessage = function (event) {
+            console.log("Received message:"+ event.data);
+            var li = document.createElement('li');
+            li.innerHTML = event.data;
+            firstPeerOutput.insertBefore(li, firstPeerOutput.firstChild);
+        };
+
+        channel.onerror = function (err) {
+            console.log("Datachannel Error: "+err);
+        }
+
+        channel.onclose = function () {
+            console.log("DataChannel is closed");
+        }
+    }
+
+    function sendOffer() {
+
+        peerConnection.createOffer(function (desc) {
+            currentoffer = desc;
+            console.log("Create an offer : \n"+JSON.stringify(desc));
+            peerConnection.setLocalDescription(desc);
+            console.log("Offer Set as Local Desc");
+            socketSend(desc);
+            sdp = desc.sdp;
+            console.log("Send offer:\n"+JSON.stringify(sdp));
+        },function(error) {
+            console.log(error);
+        });
+    }
+
+
+    function receiveOffer(evt) {
+        createPeerConnect();
+        createDatachannel();
+        peerConnection.setRemoteDescription(new RTCSessionDescription(evt));
+        console.log("Received Offer, and set as Remote Desc:\n"+ evt.sdp);
+        peerConnection.createAnswer(function(desc) {
+            peerConnection.setLocalDescription(desc);
+            currentoffer = desc;
+            sdp = desc.sdp;
+            console.log("Create Answer, and set as Local Desc:\n"+JSON.stringify(desc));
+            socketSend(desc);
+        },function (err) {
+            console.log(err);
+        });
+    }
+
+    function receiveAnswer(answer) {
+        console.log("Received remote Answer: \n"+JSON.stringify(answer));
+        peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        console.log("already set remote desc, current ice gather state: "+ peerConnection.iceGatheringState);
+    }
+
+
+    /**
+     function onNewDataChannel() {
+    peerConnection.createDataChannel(mediaConstraints);
+}
+     **/
+    function onNewDataChannel(e) {
+        console.log(e);
+        alert("Channel [" + e.channel.label + "] created!");
+        dataChannelEvents(e.channel)
+    }
+
+    function ReceiveIceCandidate(evt) {
+        if (evt) {
+            console.log("Received and add candidate:\n"+JSON.stringify(evt));
+            peerConnection.addIceCandidate(new RTCIceCandidate(evt));
+        } else{
+            return;
+        }
+    }
+
+
+    function socketSend(msg) {
+        socket.json.send(msg);
+    }
+
+
+    function onError(e) { if (e.message) alert("onError: " + e.message); else alert(e); }
+
+    function dataSend() {
+        sendmsg = firstPeerTextBox.value;
+        try {
+            dataChannel.send('hello world');
+        }
+        catch (err) {
+            console.log(err);
+        }
+        console.log('Send dc msg: '+ sendmsg);
+        firstPeerTextBox.value = '';
+    };
+
+</script>
+</body>
+</html>
