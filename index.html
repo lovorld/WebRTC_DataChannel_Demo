@@ -49,9 +49,9 @@
     var firstPeerTextBox = document.getElementById('from-first-peer');
     var firstPeerOutput = document.getElementById('messages-sent-by-second-peer');
 
-
+    var host = '192.168.31.180'
     var port = 3000;
-    var socket = io.connect('http://192.168.31.180:' + port + '/');
+    var socket = io.connect('http://'+host+':' + port + '/');
 
     var pc_config = {"iceServers": []};
 
