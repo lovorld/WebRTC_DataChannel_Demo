@@ -14,14 +14,14 @@
         </tr>
         <tr>
             <td>
-                发送信息：
+                发送信息（回车发送）：
                 <input id="from-first-peer" type="text"  onchange="dataSend()">
             </td>
         </tr>
         <tr>
             <td>
                 <ol id="messages-sent-by-second-peer" >
-                    收到的信息:
+                    聊天记录:
                 </ol>
             </td>
         </tr>
@@ -49,15 +49,9 @@
     var firstPeerTextBox = document.getElementById('from-first-peer');
     var firstPeerOutput = document.getElementById('messages-sent-by-second-peer');
 
-    var mediaConstraints = {
-        mandatory: {
-            OfferToReceiveAudio: false,
-            OfferToReceiveVideo: false
-        }
-    };
 
     var port = 3000;
-    var socket = io.connect('http://10.42.0.220:' + port + '/');
+    var socket = io.connect('http://192.168.31.180:' + port + '/');
 
     var pc_config = {"iceServers": []};
 
@@ -66,6 +60,7 @@
 
     function onOpened(evt) {
         console.log('已建立socket连接');
+        createPeerConnect();
     }
 
     //socket消息处理
@@ -80,7 +75,6 @@
     }
 
     function connect() {
-        createPeerConnect();
         createDatachannel();
         sendOffer();
     }
@@ -88,7 +82,7 @@
     function createPeerConnect() {
         try {
             peerConnection = new RTCPeerConnection(pc_config);
-            console.log("Peerconnection Connection state: "+JSON.stringify(peerConnection));
+            console.log("Peerconnection Connection established !");
         }
         catch (e) {
             console.log("pc established error："+e.message);
@@ -115,17 +109,20 @@
             console.log("iceGatheringState: "+ peerConnection.iceConnectionState);
             console.log("signalingstate:"+ peerConnection.signalingState);
             console.log("pc Connection state: "+peerConnection.connectionState);
-            console.log(dataChannel.label+"dc state: "+ dataChannel.readyState);
         };
 
-        peerConnection.ondatachanel = onNewDataChannel;
+        peerConnection.ondatachannel = function (evt) {
+            dataChannel = evt.channel;
+            console.log(dataChannel.label+"dc state: "+ dataChannel.readyState);
+            dataChannelEvents(dataChannel);     
+        }
     }
 
     function createDatachannel() {
         try {
             dataChannel = peerConnection.createDataChannel('dataChannel', {reliable: true});
-            console.log("Channel [" + dataChannel.label + "] created!");
-            console.log(dataChannel.label+"Datachannel state: "+ dataChannel.readyState);
+            console.log("Channel [ " + dataChannel.label + " ] created!");
+            console.log(dataChannel.label+" Datachannel state: "+ dataChannel.readyState);
         }
         catch (dce) {
             console.log("dc established error: "+dce.message);
@@ -145,8 +142,8 @@
         channel.onmessage = function (event) {
             console.log("Received message:"+ event.data);
             var li = document.createElement('li');
-            li.innerHTML = event.data;
-            firstPeerOutput.insertBefore(li, firstPeerOutput.firstChild);
+            li.innerHTML = 'Friend: '+event.data;
+            firstPeerOutput.appendChild(li);
         };
 
         channel.onerror = function (err) {
@@ -175,8 +172,6 @@
 
 
     function receiveOffer(evt) {
-        createPeerConnect();
-        createDatachannel();
         peerConnection.setRemoteDescription(new RTCSessionDescription(evt));
         console.log("Received Offer, and set as Remote Desc:\n"+ evt.sdp);
         peerConnection.createAnswer(function(desc) {
@@ -196,17 +191,6 @@
         console.log("already set remote desc, current ice gather state: "+ peerConnection.iceGatheringState);
     }
 
-
-    /**
-     function onNewDataChannel() {
-    peerConnection.createDataChannel(mediaConstraints);
-}
-     **/
-    function onNewDataChannel(e) {
-        console.log(e);
-        alert("Channel [" + e.channel.label + "] created!");
-        dataChannelEvents(e.channel)
-    }
 
     function ReceiveIceCandidate(evt) {
         if (evt) {
@@ -228,13 +212,16 @@
     function dataSend() {
         sendmsg = firstPeerTextBox.value;
         try {
-            dataChannel.send('hello world');
+            dataChannel.send(sendmsg);
         }
         catch (err) {
             console.log(err);
         }
         console.log('Send dc msg: '+ sendmsg);
         firstPeerTextBox.value = '';
+        var sendli = document.createElement('li');
+        sendli.innerHTML = 'Me: '+sendmsg;
+        firstPeerOutput.appendChild(sendli);
     };
 
 </script>
