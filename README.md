@@ -11,11 +11,11 @@ A simple demo by using webrtc Datachannel. Basically transmit message using data
     
 3. Modify the host variable in 'index.html' with your server address. If needed, u can change the port variable also, but remember to change it in 'server.js' as well.
 
-    ` var host= '192.168.31.180';
-    
-      var port = 3000;
-      
-      var socket = io.connect('http://'+host+':'+ port+ '/');`
+    ``` js
+        var host= '192.168.31.180';
+        var port = 3000;
+        var socket = io.connect('http://'+host+':'+ port+ '/');
+      ```
       
 4. Now, u can try this simple demo by opening two browser pages, or add more funct as u like.
 
